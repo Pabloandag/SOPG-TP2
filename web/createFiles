@@ -1,0 +1,7 @@
+#!/bin/bash
+
+sudo touch /tmp/out0.txt
+sudo touch /tmp/out1.txt
+sudo touch /tmp/out2.txt
+sudo touch /tmp/out3.txt
+
