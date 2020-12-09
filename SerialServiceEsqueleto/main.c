@@ -41,6 +41,7 @@ void *listenToSocket(void *infd)
 		if ((n = read(fd, buffer, BUFFER_LENGTH)) == -1)
 		{
 			perror("Error leyendo mensaje en socket");
+			break;
 		}
 		buffer[n] = 0;
 
