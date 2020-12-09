@@ -164,7 +164,7 @@ int main()
 
 	//Asigno handlers de señales
 	setSignalHandler(SIGINT, handlerSIGINT, 0, "handlerSIGINT");
-	setSignalHandler(SIGINT, handlerSIGTERM, 0, "handlerSIGTERM");
+	setSignalHandler(SIGTERM, handlerSIGTERM, 0, "handlerSIGTERM");
 
 	//Inicio puerto serie
 	if(serial_open(SERIAL_PORT_NUMBER, SERIAL_BAUD_RATE)){
