@@ -18,26 +18,27 @@
 #define SERIAL_MSG_LENGTH 10
 #define CONNECTION_PORT 10000
 #define CONNECTION_IP "127.0.0.1"
+#define BUFFER_LENGTH 128
 
 volatile sig_atomic_t got_sigint, got_sigterm;
 int socket_on; //Variable de estado de la conexion del cliente
 typedef void (*_sig_func_ptr)(int);
 
-pthread_mutex_t mutexSerial = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutexSocket = PTHREAD_MUTEX_INITIALIZER;
 
 // Funcion que atiende la conexión entrante con el read bloqueante
 void *listenToSocket(void *infd)
 {
 	int fd = *((int *)infd);
 	printf("Abri un thread nuevo\n");
-	char buffer[128];
+	char buffer[BUFFER_LENGTH];
 	int n = 0;
 
 	// Chequeo que no haya habido error de lectura
-	while (n != -1)
+	while ((n != -1) && (got_sigint == 0) && (got_sigterm == 0))
 	{
 		// Leemos mensaje de cliente
-		if ((n = read(fd, buffer, 128)) == -1)
+		if ((n = read(fd, buffer, BUFFER_LENGTH)) == -1)
 		{
 			perror("Error leyendo mensaje en socket");
 		}
@@ -47,20 +48,22 @@ void *listenToSocket(void *infd)
 		{
 			printf("From interface... %d bytes.:%s\n", n, buffer);
 			//ENVIAR A SERIE
-			pthread_mutex_lock(&mutexSerial);
 			serial_send(buffer, SERIAL_MSG_LENGTH);
-			pthread_mutex_unlock(&mutexSerial);
 		}
 		else
 		{
 			perror("Buffer");
 			break;
 		};
+		//Pongo sleep porque si no a las primeras lecturas (de init) no las toma a todas
+		sleep(1);
 		
 	}
 
 	printf("Cierro thread\n");
+	pthread_mutex_lock(&mutexSocket);
 	socket_on = 0;
+	pthread_mutex_unlock(&mutexSocket);
 	close(fd);
 	pthread_exit(NULL);
 }
@@ -151,7 +154,7 @@ int main()
 {
 	socklen_t addr_len;
 	struct sockaddr_in clientaddr;
-	char buffer[128];
+	char buffer[BUFFER_LENGTH];
 	int s,newfd,n;
 	pthread_t client;
 
@@ -164,7 +167,10 @@ int main()
 	setSignalHandler(SIGINT, handlerSIGTERM, 0, "handlerSIGTERM");
 
 	//Inicio puerto serie
-	serial_open(SERIAL_PORT_NUMBER, SERIAL_BAUD_RATE);
+	if(serial_open(SERIAL_PORT_NUMBER, SERIAL_BAUD_RATE)){
+		perror("Serial open\n");
+		exit(EXIT_FAILURE);
+	}
 
 	//Creo y configuro socket
 	if ((s = createSocket()) == -1){
@@ -195,11 +201,12 @@ int main()
 		}
 		desbloquearSign();
 
+		pthread_mutex_lock(&mutexSocket);
 		// Escucho periodicamente el puerto serie
 		while ((socket_on == 1) && (got_sigint == 0) && (got_sigterm == 0))
 		{
-			pthread_mutex_lock(&mutexSerial);
-			if ((n =serial_receive(buffer, 128)) != 0)
+			pthread_mutex_unlock(&mutexSocket);
+			if ((n =serial_receive(buffer, BUFFER_LENGTH)) != 0)
 			{
 				buffer[n] = '\0';
 				printf("From serial... %d bytes: %s\n",n, buffer);
@@ -209,14 +216,18 @@ int main()
 					exit(EXIT_FAILURE);
 				}
 			}
-			pthread_mutex_unlock(&mutexSerial);
 			sleep(1);
+			pthread_mutex_lock(&mutexSocket);
 		}
+		pthread_mutex_unlock(&mutexSocket);
 
 	}
 
 	printf("Cerrando programa\n");
 	pthread_cancel(client);
+	pthread_join(client,NULL);
+	serial_close();
+	close(s);
 	exit(EXIT_SUCCESS);
 
 	return 0;
